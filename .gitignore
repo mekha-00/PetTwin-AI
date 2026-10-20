@@ -1,0 +1,75 @@
+# ── Secrets ──────────────────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+credentials.json
+
+# ── Python ───────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+env/
+ENV/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.egg-info/
+.eggs/
+
+# ── Node / frontend ──────────────────────────────────────────────────────
+node_modules/
+dist/
+build/
+.vite/
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.env.local
+.env.*.local
+
+# ── IDE / OS ─────────────────────────────────────────────────────────────
+.idea/
+.vscode/*
+!.vscode/extensions.json
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Data (raw data is tracked; generated output is not) ──────────────────
+# data/raw/ is intentionally TRACKED: it is the immutable source of truth.
+data/processed/*
+!data/processed/.gitkeep
+data/sample/*
+!data/sample/.gitkeep
+
+# ── Embedding model cache (downloaded on first run) ──────────────────────
+backend/.cache/
+
+# ── Trained model artefacts ──────────────────────────────────────────────
+ml/models/*
+!ml/models/.gitkeep
+*.pkl
+*.joblib
+*.onnx
+
+# ── RAG vector store (regenerable from rag/documents/) ───────────────────
+rag/vectorstore/*
+!rag/vectorstore/.gitkeep
+*.faiss
+*.pkl.index
+
+# ── Logs ─────────────────────────────────────────────────────────────────
+*.log
+logs/
+
+# ── Notebooks ────────────────────────────────────────────────────────────
+.ipynb_checkpoints/

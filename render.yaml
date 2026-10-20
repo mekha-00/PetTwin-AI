@@ -1,0 +1,66 @@
+# Render Blueprint for PetTwin AI.
+#
+# Deploys two services from this repository:
+#   1. pettwin-api     — the FastAPI backend, built from ./Dockerfile.
+#   2. pettwin-web     — the React frontend, a static site built with Vite.
+#
+# The database is NOT defined here: it is a free Neon Postgres instance. Create
+# it separately and paste its details into the env vars below (marked
+# `sync: false`, meaning Render prompts for the value and never stores it in git).
+#
+# After the first deploy, set CORS_ORIGINS on pettwin-api to the static site URL
+# (e.g. https://pettwin-web.onrender.com) and redeploy the API.
+
+services:
+  - type: web
+    name: pettwin-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: SECRET_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_MODEL
+        value: openai/gpt-oss-120b
+      # --- Neon Postgres connection (paste from the Neon dashboard) ---
+      - key: POSTGRES_HOST
+        sync: false
+      - key: POSTGRES_PORT
+        value: "5432"
+      - key: POSTGRES_USER
+        sync: false
+      - key: POSTGRES_PASSWORD
+        sync: false
+      - key: POSTGRES_DB
+        sync: false
+      # Neon requires TLS.
+      - key: POSTGRES_SSLMODE
+        value: require
+      # Demo convenience: build tables on first boot (no migration tool yet).
+      - key: DB_AUTO_CREATE
+        value: "true"
+      - key: RAG_WARMUP_ON_STARTUP
+        value: "true"
+      - key: DEBUG
+        value: "false"
+      # Set this to the static site URL after the first deploy, then redeploy.
+      - key: CORS_ORIGINS
+        sync: false
+
+  - type: web
+    name: pettwin-web
+    runtime: static
+    buildCommand: cd frontend && npm install && npm run build
+    staticPublishPath: ./frontend/dist
+    envVars:
+      - key: VITE_API_BASE_URL
+        sync: false
+    routes:
+      # SPA fallback: every unknown path serves index.html so React Router works.
+      - type: rewrite
+        source: /*
+        destination: /index.html

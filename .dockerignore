@@ -1,0 +1,39 @@
+# Build context is the repository root. Keep the image small and secret-free.
+
+# Virtualenvs and caches are rebuilt inside the image.
+backend/.venv/
+**/__pycache__/
+**/*.py[cod]
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+
+# The embedding cache is re-downloaded at build time on purpose.
+backend/.cache/
+
+# Node build artefacts; the frontend is deployed separately as a static site.
+frontend/
+node_modules/
+dist/
+build/
+
+# Secrets must never enter the image.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Version control and editor noise.
+.git/
+.gitignore
+.vscode/
+.idea/
+*.log
+
+# Regenerable ingestion output (keep data/raw/ and data/external/).
+data/processed/
+data/sample/
+
+# Tests are not needed at runtime.
+tests/
