@@ -10,6 +10,7 @@ the expensive part and doing it per request would dominate the response time.
 
 from __future__ import annotations
 
+import os
 import threading
 from pathlib import Path
 from typing import Sequence
@@ -20,8 +21,20 @@ import numpy as np
 MODEL_NAME = "BAAI/bge-small-en-v1.5"
 
 #: Cache inside the project so a re-clone does not re-download and a fresh
-#: Windows temp wipe cannot invalidate it.
-CACHE_DIR = Path(__file__).resolve().parents[2] / ".cache" / "fastembed"
+#: Windows temp wipe cannot invalidate it. Overridable with ``FASTEMBED_CACHE_DIR``
+#: so the Docker build can pre-download into exactly the directory the runtime
+#: reads — otherwise the baked model is silently ignored and re-fetched at boot.
+CACHE_DIR = Path(
+    os.environ.get(
+        "FASTEMBED_CACHE_DIR",
+        str(Path(__file__).resolve().parents[2] / ".cache" / "fastembed"),
+    )
+)
+
+#: Bound ONNX's intra-op threads. On a 512 MB instance the default thread pool
+#: reserves a large per-thread arena; one thread keeps startup inside the limit
+#: at a negligible latency cost for a 384-dim model on short texts.
+_EMBED_THREADS = int(os.environ.get("FASTEMBED_THREADS", "1"))
 
 _model = None
 _model_lock = threading.Lock()
@@ -40,7 +53,11 @@ def _get_model():
                     from fastembed import TextEmbedding
 
                     CACHE_DIR.mkdir(parents=True, exist_ok=True)
-                    _model = TextEmbedding(MODEL_NAME, cache_dir=str(CACHE_DIR))
+                    _model = TextEmbedding(
+                        MODEL_NAME,
+                        cache_dir=str(CACHE_DIR),
+                        threads=_EMBED_THREADS,
+                    )
                 except Exception as exc:  # pragma: no cover - env dependent
                     raise EmbeddingUnavailableError(str(exc)) from exc
     return _model

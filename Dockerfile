@@ -14,7 +14,9 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     HF_HOME=/opt/models \
-    HF_HUB_DISABLE_SYMLINKS_WARNING=1
+    HF_HUB_DISABLE_SYMLINKS_WARNING=1 \
+    OMP_NUM_THREADS=1 \
+    ORT_NUM_THREADS=1
 
 # libgomp1 is required by onnxruntime for CPU inference.
 RUN apt-get update \
@@ -25,10 +27,36 @@ WORKDIR /app
 
 # Install dependencies first so this layer is cached across code changes.
 COPY backend/requirements.txt ./backend/requirements.txt
-RUN pip install --no-cache-dir -r backend/requirements.txt
 
-# Pre-download the embedding model into HF_HOME so runtime has no network need.
-RUN python -c "from fastembed import TextEmbedding; TextEmbedding(model_name='BAAI/bge-small-en-v1.5'); print('embedding model cached')"
+# Install runtime deps only. pytest/httpx and uvicorn's "standard" extras
+# (uvloop, httptools, watchfiles, websockets) are dev/observability weight we
+# cannot afford inside the 512 MB free instance, so uvicorn is pinned plain.
+RUN pip install --no-cache-dir \
+        fastapi==0.115.6 \
+        uvicorn==0.34.0 \
+        python-multipart==0.0.20 \
+        pydantic==2.10.4 \
+        pydantic-settings==2.7.0 \
+        email-validator==2.2.0 \
+        SQLAlchemy==2.0.36 \
+        psycopg2-binary==2.9.10 \
+        PyJWT==2.10.1 \
+        bcrypt==4.2.1 \
+        pymupdf==2.0 \
+        numpy==2.4.6 \
+        fastembed==0.9.0 \
+        onnxruntime==1.31.0 \
+        groq==0.37.1 \
+        langgraph==1.2.16 \
+        langchain-groq==1.1.3 \
+    && pip check
+
+# Pre-download the embedding model into the EXACT directory the runtime reads
+# (app/rag/embeddings.py honours FASTEMBED_CACHE_DIR). This must match, or the
+# baked model is ignored and re-fetched at boot — the bug that caused the OOM.
+ENV FASTEMBED_CACHE_DIR=/app/backend/.cache/fastembed \
+    FASTEMBED_THREADS=1
+RUN python -c "from fastembed import TextEmbedding; TextEmbedding(model_name='BAAI/bge-small-en-v1.5', cache_dir='/app/backend/.cache/fastembed', threads=1); print('embedding model cached')"
 
 # Copy the application and the assets it reads at runtime.
 COPY backend/ ./backend/

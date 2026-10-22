@@ -43,8 +43,11 @@ services:
       # Demo convenience: build tables on first boot (no migration tool yet).
       - key: DB_AUTO_CREATE
         value: "true"
+      # Warm-up embeds all ~840 chunks during boot, which pushed the free
+      # instance over 512 MB. Build the index lazily on the first RAG query
+      # instead, so boot stays inside the memory limit.
       - key: RAG_WARMUP_ON_STARTUP
-        value: "true"
+        value: "false"
       - key: DEBUG
         value: "false"
       # Set this to the static site URL after the first deploy, then redeploy.
