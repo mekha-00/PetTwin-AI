@@ -702,7 +702,22 @@ The demo is deployed as two Render services plus a free Neon Postgres database:
 
 `DB_AUTO_CREATE=true` is set for the demo so the schema is built on first boot
 (there is still no migration tool). The embedding model is baked into the image
-at build time, so there is no first-request download.
+at build time, and the two retrieval indexes (`rag`, `ml`) are **committed**
+under `backend/index_cache/`, so neither the build nor the first request has to
+embed anything.
+
+### Regenerating the committed indexes
+
+Run this whenever a PDF under `rag/documents/` or the case CSV changes, then
+commit the result:
+
+```bash
+cd backend
+python -m app.scripts.build_indexes
+```
+
+`tests/test_index_cache.py` fails if the committed files are missing or stale
+relative to the corpus.
 
 ### Seeding demo data
 
@@ -718,11 +733,11 @@ dog carrying verified symptoms.
 
 ### Demo caveats
 
-- **Free web services sleep** after ~15 minutes idle. Waking takes ~1 minute,
-  and the RAG index warm-up adds up to ~2 minutes on the first request after a
-  cold start. Hit the API once before presenting.
-- **Ephemeral disk**: the RAG index is rebuilt per cold start (the model itself
-  is baked into the image).
+- **Free web services sleep** after ~15 minutes idle. Waking takes ~1 minute.
+  Hit the API once before presenting. The frontend reports an unreachable API
+  when the first request lands during that window; reload once it is awake.
+- **Ephemeral disk**: nothing is written to disk at runtime. The indexes are
+  committed to the repo and loaded read-only from the image.
 - **No migrations**: schema comes from `create_all()`. Fine for a demo; a real
   deployment needs Alembic.
 

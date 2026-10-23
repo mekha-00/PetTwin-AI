@@ -36,11 +36,18 @@ CACHE_VERSION = 1
 
 
 def cache_dir() -> Path:
-    """Directory holding the baked indexes."""
+    """Directory holding the prebuilt indexes.
+
+    Defaults to ``backend/index_cache`` — the indexes are committed to the repo
+    and copied into the image by ``COPY backend/``. Building them inside the
+    Docker build was abandoned: embedding 840 chunks there needs several minutes
+    and spikes memory, which failed the free-tier build and left the old image
+    serving. Shipping the files keeps the build cheap and deterministic.
+    """
     override = os.environ.get("INDEX_CACHE_DIR")
     if override:
         return Path(override)
-    return Path(__file__).resolve().parents[2] / ".cache" / "indexes"
+    return Path(__file__).resolve().parents[2] / "index_cache"
 
 
 def file_fingerprint(paths: Iterable[Path]) -> str:
