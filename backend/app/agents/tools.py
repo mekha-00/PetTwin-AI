@@ -32,10 +32,13 @@ class AgentContext:
     ``twin_snapshot`` is the dict returned by ``build_digital_twin`` for a pet
     the caller has already been authorized against. ``retrieve`` is the RAG
     search function; it defaults to the real store and is replaced in tests.
+    ``predict`` returns ranked condition candidates for the pet (Phase 7) and is
+    injected by the service so tests can substitute a fake.
     """
 
     twin_snapshot: dict[str, Any]
     retrieve: Callable[..., list[RetrievedChunk]] = field(default=None)  # type: ignore[assignment]
+    predict: Callable[[], list[dict[str, Any]]] = field(default=None)  # type: ignore[assignment]
 
     def __post_init__(self) -> None:
         if self.retrieve is None:
@@ -147,6 +150,23 @@ def read_pet_twin(context: AgentContext) -> str:
         return "No Digital Twin is available for this pet."
     return summarize_twin(context.twin_snapshot)
 
+
+def suggest_conditions(context: AgentContext) -> str:
+    """Tool: rank possible conditions from recorded cases using the pet's symptoms.
+
+    Returns evidence from the Phase 7 predictor (case counts and average
+    resemblance) rather than probabilities. If no predictor is bound or no
+    symptoms are present, the result is reported plainly so the model does not
+    guess.
+    """
+    if context.predict is None:
+        return "Condition prediction is not available for this request."
+    try:
+        candidates = context.predict()
+    except Exception as exc:
+        return f"Condition prediction could not be run: {exc}"
+    if not candidates:
+        return "No similar recorded cases were found to rank possible conditions."
 
 def search_literature(context: AgentContext, query: str, top_k: int = 4) -> str:
     """Tool: retrieve veterinary literature passages for ``query``.

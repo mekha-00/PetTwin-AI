@@ -99,12 +99,18 @@ export function describeError(error) {
       .join('; ')
   }
 
-  if (error?.code === 'ECONNABORTED') {
-    return 'The request timed out. Please try again.'
+  const message = (error?.message || '').toLowerCase()
+  if (error?.code === 'ECONNABORTED' || message.includes('timeout') || message.includes('timed out')) {
+    return 'The request timed out. The free service may be waking up — retry in a minute.'
   }
 
-  if (error?.response === undefined) {
-    return 'Cannot reach the API. Is the backend running on port 8000?'
+  if (error?.response === undefined || message.includes('network')) {
+    return `Could not reach the API at ${API_BASE_URL}. The free service may be waking up — retry in a minute.`
+  }
+
+  const status = error?.response?.status
+  if (status && status >= 500) {
+    return 'The server ran into an error. Try again in a moment.'
   }
 
   return 'Something went wrong. Please try again.'

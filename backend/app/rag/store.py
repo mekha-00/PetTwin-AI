@@ -9,12 +9,29 @@ reuses the same matrix.
 from __future__ import annotations
 
 import threading
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
+from pathlib import Path
 
 import numpy as np
 
-from app.rag.corpus import Chunk, load_chunks
-from app.rag.embeddings import cosine_similarity, embed_query, embed_texts
+from app.core.index_cache import file_fingerprint, load as load_cached
+from app.rag.corpus import DOCUMENTS_DIR, Chunk, load_chunks
+from app.rag.embeddings import MODEL_NAME, cosine_similarity, embed_query, embed_texts
+
+#: Name of this index inside the shared on-disk cache.
+CACHE_NAME = "rag"
+
+
+def _corpus_fingerprint() -> str:
+    return file_fingerprint(Path(p) for p in DOCUMENTS_DIR.glob("*.pdf"))
+
+
+def _chunks_to_payload(chunks: list[Chunk]) -> list[dict]:
+    return [asdict(chunk) for chunk in chunks]
+
+
+def _chunks_from_payload(items: list[dict]) -> list[Chunk]:
+    return [Chunk(**item) for item in items]
 
 
 @dataclass(frozen=True)
@@ -38,14 +55,28 @@ _index_lock = threading.Lock()
 
 
 def build_index() -> _Index:
-    """Build the index from the PDFs, or return the cached one."""
+    """Build the index from the PDFs, or return the cached one.
+
+    A matrix precomputed at image build time is loaded from disk first, which is
+    instant and avoids embedding 840 chunks on the first request. If no trusted
+    cache exists (local development), the chunks are embedded here as before.
+    """
     global _index
     if _index is None:
         with _index_lock:
             if _index is None:
-                chunks = load_chunks()
-                matrix = embed_texts([c.text for c in chunks])
-                _index = _Index(chunks, matrix)
+                cached = load_cached(
+                    CACHE_NAME,
+                    model=MODEL_NAME,
+                    fingerprint=_corpus_fingerprint(),
+                )
+                if cached is not None:
+                    matrix, items = cached
+                    _index = _Index(_chunks_from_payload(items), matrix)
+                else:
+                    chunks = load_chunks()
+                    matrix = embed_texts([c.text for c in chunks])
+                    _index = _Index(chunks, matrix)
     return _index
 
 
@@ -57,7 +88,21 @@ def reset_index() -> None:
 
 
 def index_size() -> int:
-    return len(build_index().chunks)
+    """Passage count without triggering an embedding run.
+
+    Status checks call this, so it must stay cheap even if the process has not
+    built the index yet. A baked cache gives the count directly; otherwise the
+    PDFs are only parsed (never embedded).
+    """
+    index = _index
+    if index is not None:
+        return len(index.chunks)
+    cached = load_cached(
+        CACHE_NAME, model=MODEL_NAME, fingerprint=_corpus_fingerprint()
+    )
+    if cached is not None:
+        return len(cached[1])
+    return len(load_chunks())
 
 
 def search(query: str, *, top_k: int = 4, min_score: float = 0.0) -> list[RetrievedChunk]:

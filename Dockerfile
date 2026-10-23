@@ -65,6 +65,14 @@ COPY data/ ./data/
 
 WORKDIR /app/backend
 
+# Build the embedding indexes once, at image build time. At runtime they load
+# from disk in milliseconds instead of embedding 840 chunks on the first request
+# (which peaked over 512 MB and got the free instance killed). Extra threads are
+# safe here: this runs on the build machine, not the 512 MB runtime.
+ENV INDEX_CACHE_DIR=/app/backend/.cache/indexes
+RUN OMP_NUM_THREADS=4 ORT_NUM_THREADS=4 FASTEMBED_THREADS=4 \
+    python -m app.scripts.build_indexes
+
 # Render provides $PORT; default to 8000 for local `docker run`.
 ENV PORT=8000
 EXPOSE 8000

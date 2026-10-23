@@ -14,13 +14,30 @@ is a second or two after the model is loaded.
 from __future__ import annotations
 
 import threading
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
+from pathlib import Path
 
 import numpy as np
 
-from app.ml.dataset import CaseRecord, load_cases
+from app.core.index_cache import file_fingerprint, load as load_cached
+from app.ml.dataset import DEFAULT_CSV, CaseRecord, load_cases
 from app.ml.features import features_for_case
-from app.rag.embeddings import cosine_similarity, embed_query, embed_texts
+from app.rag.embeddings import MODEL_NAME, cosine_similarity, embed_query, embed_texts
+
+#: Name of this index inside the shared on-disk cache.
+CACHE_NAME = "ml"
+
+
+def _corpus_fingerprint() -> str:
+    return file_fingerprint([Path(DEFAULT_CSV)])
+
+
+def _cases_to_payload(cases: list[CaseRecord]) -> list[dict]:
+    return [asdict(case) for case in cases]
+
+
+def _cases_from_payload(items: list[dict]) -> list[CaseRecord]:
+    return [CaseRecord(**item) for item in items]
 
 
 @dataclass(frozen=True)
@@ -51,17 +68,31 @@ _index_lock = threading.Lock()
 
 
 def build_index() -> _CaseIndex:
-    """Build the case index, or return the cached one."""
+    """Build the case index, or return the cached one.
+
+    A matrix precomputed at image build time is loaded from disk first, which is
+    instant. If no trusted cache exists (local development), the cases are
+    embedded here as before.
+    """
     global _index
     if _index is None:
         with _index_lock:
             if _index is None:
-                cases = load_cases()
-                if cases:
-                    matrix = embed_texts([features_for_case(c) for c in cases])
+                cached = load_cached(
+                    CACHE_NAME,
+                    model=MODEL_NAME,
+                    fingerprint=_corpus_fingerprint(),
+                )
+                if cached is not None:
+                    matrix, items = cached
+                    _index = _CaseIndex(_cases_from_payload(items), matrix)
                 else:
-                    matrix = np.zeros((0, 384), dtype=np.float32)
-                _index = _CaseIndex(cases, matrix)
+                    cases = load_cases()
+                    if cases:
+                        matrix = embed_texts([features_for_case(c) for c in cases])
+                    else:
+                        matrix = np.zeros((0, 384), dtype=np.float32)
+                    _index = _CaseIndex(cases, matrix)
     return _index
 
 
@@ -73,7 +104,16 @@ def reset_index() -> None:
 
 
 def index_size() -> int:
-    return len(build_index().cases)
+    """Case count without triggering an embedding run."""
+    index = _index
+    if index is not None:
+        return len(index.cases)
+    cached = load_cached(
+        CACHE_NAME, model=MODEL_NAME, fingerprint=_corpus_fingerprint()
+    )
+    if cached is not None:
+        return len(cached[1])
+    return len(load_cases())
 
 
 def find_similar(

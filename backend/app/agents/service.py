@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from app.agents.graph import AgentRun, AgentUnavailableError, run_agent
 from app.agents.tools import AgentContext
 from app.core.config import settings
+from app.ml.service import predict_conditions_for_pet
 from app.services.authorization import load_accessible_pet
 from app.services.digital_twin_service import build_digital_twin
 
@@ -62,6 +63,20 @@ def answer_pet_question(
     context_kwargs: dict[str, Any] = {"twin_snapshot": twin_snapshot}
     if retrieve is not None:
         context_kwargs["retrieve"] = retrieve
+
+    def _predict() -> list[dict[str, Any]]:
+        result = predict_conditions_for_pet(db, pet_id=pet_id, user_id=user_id)
+        return [
+            {
+                "disease": c.disease,
+                "case_count": c.case_count,
+                "avg_similarity": c.avg_similarity,
+                "shared_symptoms": c.shared_symptoms,
+            }
+            for c in result.candidates
+        ]
+
+    context_kwargs["predict"] = _predict
     context = AgentContext(**context_kwargs)
 
     chat_model = model if model is not None else _build_model()

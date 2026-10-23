@@ -16,7 +16,7 @@ import { BookOpenText, Search, Sparkles, TriangleAlert } from 'lucide-react'
 import { askRag, fetchRagStatus } from '../lib/endpoints'
 import { describeError } from '../lib/api'
 import { useAsyncData } from '../hooks/useAsyncData'
-import { Badge, ErrorMessage, Notice, SectionCard, Spinner } from '../components/ui'
+import { Badge, ErrorMessage, SectionCard, Spinner } from '../components/ui'
 
 const EXAMPLE_QUESTIONS = [
   'How often should puppies be vaccinated?',
@@ -99,17 +99,6 @@ export default function ClinicalReference() {
           documents, with the passages it used listed below it.
         </p>
       </header>
-
-      <Notice tone="warn">
-        <span className="flex items-start gap-2">
-          <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-          <span>
-            This is a literature summary, not veterinary advice, and it does not
-            look at any pet&rsquo;s records. Always confirm with a licensed
-            veterinarian before acting on it.
-          </span>
-        </span>
-      </Notice>
 
       <SectionCard
         title="Ask a question"
@@ -196,10 +185,6 @@ export default function ClinicalReference() {
           <div className="mt-4">
             <SourceList sources={result.sources} />
           </div>
-
-          <p className="mt-4 border-t border-line pt-3 text-xs text-ink-soft">
-            {result.disclaimer}
-          </p>
         </SectionCard>
       ) : null}
     </div>

@@ -234,7 +234,11 @@ def test_system_prompt_forbids_diagnosis() -> None:
     run_agent(model, context, "diagnose my dog")
 
     system_message = model.invocations[0][0]
-    assert "NEVER give a diagnosis" in system_message.content
+    assert "read_pet_twin first" in system_message.content
+    assert "predict_conditions" in system_message.content
+    assert "not a confirmed diagnosis" in system_message.content
+    assert "drug doses unless" in system_message.content
+    assert "NEVER give a diagnosis" not in system_message.content
 
 
 # ---------------------------------------------------------------------------
@@ -294,7 +298,7 @@ def test_ask_endpoint_happy_path(client, owner_pet, owner_token, monkeypatch) ->
     assert body["pet_id"] == owner_pet["id"]
     assert body["tools_used"] == ["read_pet_twin"]
     assert body["read_only"] is True
-    assert body["disclaimer"]
+    assert "clinical decision support" in body["disclaimer"].lower()
 
 
 def test_ask_endpoint_hides_another_users_pet(

@@ -14,12 +14,6 @@ from dataclasses import dataclass, field
 from app.core.config import settings
 from app.rag.store import RetrievedChunk, search
 
-#: Shown with every answer. The assistant is a reading aid, not a diagnosis.
-DISCLAIMER = (
-    "This is a literature summary generated from the indexed veterinary "
-    "documents, not veterinary advice. Always confirm with a licensed "
-    "veterinarian before acting on it."
-)
 
 SYSTEM_PROMPT = (
     "You are a veterinary literature assistant. Answer ONLY from the numbered "
@@ -53,7 +47,6 @@ class AnswerResult:
     sources: list[SourcePassage] = field(default_factory=list)
     grounded: bool = True
     model: str | None = None
-    disclaimer: str = DISCLAIMER
 
 
 def _format_passages(passages: list[RetrievedChunk]) -> str:

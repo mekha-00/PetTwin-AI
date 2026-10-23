@@ -35,7 +35,6 @@ class RagAnswer(BaseModel):
     sources: list[RagSource] = []
     grounded: bool
     model: str | None = None
-    disclaimer: str
 
 
 class RagStatus(BaseModel):
@@ -75,5 +74,4 @@ def rag_query(payload: RagQuery, current_user: CurrentUser) -> RagAnswer:
         sources=[RagSource(**s.__dict__) for s in result.sources],
         grounded=result.grounded,
         model=result.model,
-        disclaimer=result.disclaimer,
     )

@@ -8,6 +8,7 @@ via the ``get_db`` dependency override, so no production setting is mutated.
 """
 
 import os
+import tempfile
 import uuid
 from collections.abc import Generator
 from datetime import datetime, timedelta, timezone
@@ -21,6 +22,14 @@ os.environ.setdefault("POSTGRES_DB", "pettwin_test")
 # index there would rebuild it repeatedly and dominate the suite runtime. Set
 # with ``setdefault`` so an explicit override still wins.
 os.environ.setdefault("RAG_WARMUP_ON_STARTUP", "false")
+
+# Keep tests away from any index baked into a local or deployed image. With an
+# empty directory the cache loader finds nothing and tests fall back to their
+# monkeypatched builders, exactly as before the cache existed.
+os.environ.setdefault(
+    "INDEX_CACHE_DIR",
+    os.path.join(tempfile.gettempdir(), "pettwin-index-cache-tests"),
+)
 
 from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import create_engine, text  # noqa: E402

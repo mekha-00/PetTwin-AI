@@ -175,7 +175,6 @@ def test_grounded_answer_carries_sources(monkeypatch) -> None:
     assert len(result.sources) == 1
     assert result.sources[0].source == "wsava.pdf"
     assert result.sources[0].index == 1
-    assert result.disclaimer
 
 
 # ---------------------------------------------------------------------------
@@ -235,4 +234,3 @@ def test_query_happy_path(client, owner_token, monkeypatch) -> None:
     assert body["grounded"] is True
     assert body["sources"][0]["source"] == "wsava.pdf"
     assert body["sources"][0]["page"] == 11
-    assert body["disclaimer"]

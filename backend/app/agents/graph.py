@@ -36,33 +36,52 @@ from langchain_core.messages import (
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 
-from app.agents.tools import AgentContext, read_pet_twin, search_literature
+from app.agents.tools import (
+    AgentContext,
+    read_pet_twin,
+    search_literature,
+    suggest_conditions,
+)
 
 #: Shown with every agent answer.
 DISCLAIMER = (
-    "This is an assistant summary built from this pet's verified records and "
-    "the indexed veterinary documents. It is not a diagnosis and not veterinary "
-    "advice. Confirm with a licensed veterinarian before acting on it."
+    "Clinical decision support for a veterinarian, built from this pet's verified "
+    "records and cited literature. It presents possible conditions and treatment "
+    "approaches from the sources available — not a confirmed diagnosis. Do not "
+    "infer a diagnosis from this alone; the veterinarian decides. No specific drug "
+    "doses are given unless a cited passage states them verbatim."
 )
 
 SYSTEM_PROMPT = (
-    "You are a veterinary assistant helping an owner or clinician understand one "
-    "pet. You have two tools:\n"
-    "  - read_pet_twin: the pet's verified health state (conditions, symptoms, "
-    "medications, allergies, vaccination status, recent history).\n"
+    "You are a clinical decision-support assistant for a veterinarian about one "
+    "pet. Your job is to ground answers in the pet's verified records and cited "
+    "veterinary literature.\n\n"
+    "You have three tools:\n"
+    "  - read_pet_twin: the pet's verified Digital Twin (identity, ongoing "
+    "conditions, symptoms, medications, allergies, vaccination, recent history).\n"
+    "  - predict_conditions: ranks possible diseases from recorded cases with "
+    "similar symptoms (evidence-ranked by case count and resemblance, not a "
+    "probability).\n"
     "  - search_literature: passages from an indexed corpus of veterinary "
-    "documents.\n\n"
+    "documents to cite.\n\n"
     "Rules you must follow:\n"
-    "1. Use read_pet_twin whenever the question is about this specific pet.\n"
-    "2. Use search_literature for general clinical questions (vaccination "
-    "schedules, disease transmission, symptoms). Often you need both.\n"
-    "3. Answer ONLY from the tool results. If they do not cover the question, say "
-    "so plainly.\n"
-    "4. NEVER give a diagnosis, a prognosis, a drug dose, or a treatment plan. "
-    "If asked for one, say that is for a veterinarian to decide and explain what "
-    "the records and literature do show.\n"
-    "5. Cite literature passages as [1], [2]. Refer to the pet by name.\n"
-    "6. Be concise and factual. Do not invent facts.\n"
+    "1. For any question about what could be wrong with this pet, call "
+    "read_pet_twin first.\n"
+    "2. Call predict_conditions to get evidence-ranked possible conditions based "
+    "on the pet's current symptoms and profile.\n"
+    "3. For each plausible condition (or for the question as a whole), call "
+    "search_literature for treatment approaches, next diagnostic steps, and "
+    "contraindications relevant to this pet.\n"
+    "4. Present a vet-facing answer: list possible conditions with the evidence "
+    "from predict_conditions, cite literature passages as [1], [2] for treatment "
+    "and diagnostics, and refer to the pet by name.\n"
+    "5. This is decision support, not a confirmed diagnosis. Say so. The "
+    "veterinarian decides.\n"
+    "6. Do not give specific drug doses unless a cited passage states them "
+    "verbatim. If dosing is needed, say the literature does not specify a dose in "
+    "the cited passages or refer the veterinarian to the cited source.\n"
+    "7. If the records or literature do not cover something, say so plainly. Do "
+    "not invent facts.\n"
     "When you have enough information, answer directly without calling more tools."
 )
 
@@ -83,10 +102,32 @@ TOOL_SCHEMAS = [
     {
         "type": "function",
         "function": {
+            "name": "predict_conditions",
+            "description": (
+                "Rank possible diseases from recorded cases with similar "
+                "symptoms and profile. Returns evidence (case counts and average "
+                "resemblance), not probabilities or a diagnosis."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "top_k": {
+                        "type": "integer",
+                        "description": "How many candidates to return (1-10).",
+                        "default": 5,
+                    },
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "search_literature",
             "description": (
                 "Search the indexed veterinary literature for passages about a "
-                "clinical topic. Returns numbered passages to cite."
+                "clinical topic. Use to find treatment approaches, diagnostic "
+                "steps, or contraindications relevant to the pet; cite passages."
             ),
             "parameters": {
                 "type": "object",
@@ -132,6 +173,8 @@ class AgentUnavailableError(RuntimeError):
 def _execute_tool(context: AgentContext, name: str, arguments: dict[str, Any]) -> str:
     if name == "read_pet_twin":
         return read_pet_twin(context)
+    if name == "predict_conditions":
+        return suggest_conditions(context)
     if name == "search_literature":
         query = str(arguments.get("query", "")).strip()
         if not query:
