@@ -67,6 +67,11 @@ def rag_query(payload: RagQuery, current_user: CurrentUser) -> RagAnswer:
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=str(exc),
         ) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"The assistant is temporarily unavailable: {exc}",
+        ) from exc
 
     return RagAnswer(
         question=payload.question,

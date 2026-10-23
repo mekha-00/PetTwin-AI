@@ -80,7 +80,7 @@ def _generate(prompt: str) -> str:
     try:
         from groq import Groq
 
-        client = Groq(api_key=settings.groq_api_key)
+        client = Groq(api_key=settings.groq_api_key, timeout=60.0)
         completion = client.chat.completions.create(
             model=settings.groq_model,
             messages=[
