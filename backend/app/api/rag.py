@@ -11,7 +11,8 @@ from pydantic import BaseModel, Field
 from app.api.deps import CurrentUser
 from app.rag.answer import LlmUnavailableError, answer_question
 from app.rag.embeddings import EmbeddingUnavailableError
-from app.rag.store import index_size
+from app.rag.store import diagnostics as index_diagnostics
+from app.rag.store import index_size, is_loaded
 
 router = APIRouter(prefix="/rag", tags=["rag"])
 
@@ -40,6 +41,19 @@ class RagAnswer(BaseModel):
 class RagStatus(BaseModel):
     documents_indexed: int
     ready: bool
+    index_loaded: bool | None = None
+    memory_mb: float | None = None
+    diagnostics: dict | None = None
+
+
+def _memory_mb() -> float | None:
+    """Resident set size of this process, when the platform exposes it."""
+    try:
+        with open("/proc/self/statm", encoding="ascii") as handle:
+            pages = int(handle.read().split()[1])
+        return round(pages * 4096 / (1024 * 1024), 1)
+    except Exception:
+        return None
 
 
 @router.get("/status", response_model=RagStatus, summary="RAG index status")
@@ -49,7 +63,17 @@ def rag_status(current_user: CurrentUser) -> RagStatus:
         count = index_size()
     except EmbeddingUnavailableError:
         count = 0
-    return RagStatus(documents_indexed=count, ready=count > 0)
+    try:
+        diag = index_diagnostics()
+    except Exception as exc:  # pragma: no cover - environment dependent
+        diag = {"error": str(exc)}
+    return RagStatus(
+        documents_indexed=count,
+        ready=count > 0,
+        index_loaded=is_loaded(),
+        memory_mb=_memory_mb(),
+        diagnostics=diag,
+    )
 
 
 @router.post("/query", response_model=RagAnswer, summary="Ask the veterinary corpus")

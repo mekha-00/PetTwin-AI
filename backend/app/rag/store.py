@@ -14,7 +14,11 @@ from pathlib import Path
 
 import numpy as np
 
-from app.core.index_cache import file_fingerprint, load as load_cached
+from app.core.index_cache import (
+    diagnostics as diagnostics_for,
+    file_fingerprint,
+    load as load_cached,
+)
 from app.rag.corpus import DOCUMENTS_DIR, Chunk, load_chunks
 from app.rag.embeddings import MODEL_NAME, cosine_similarity, embed_query, embed_texts
 
@@ -103,6 +107,18 @@ def index_size() -> int:
     if cached is not None:
         return len(cached[1])
     return len(load_chunks())
+
+
+def is_loaded() -> bool:
+    """Whether the matrix is already in memory (cheap status probe)."""
+    return _index is not None
+
+
+def diagnostics() -> dict:
+    """Explain cache state for the deployed instance (see ``index_cache``)."""
+    return diagnostics_for(
+        CACHE_NAME, model=MODEL_NAME, fingerprint=_corpus_fingerprint()
+    )
 
 
 def search(query: str, *, top_k: int = 4, min_score: float = 0.0) -> list[RetrievedChunk]:

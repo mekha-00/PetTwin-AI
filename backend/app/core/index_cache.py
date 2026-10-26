@@ -87,6 +87,57 @@ def save(
     return directory
 
 
+def diagnostics(name: str, *, model: str, fingerprint: str) -> dict[str, Any]:
+    """Describe a cache entry without loading its matrix into memory.
+
+    Used by ``GET /api/rag/status`` to explain why a deployed instance may be
+    falling back to embedding from scratch (which OOMs a 512 MB instance).
+    """
+    directory = cache_dir()
+    matrix_path = directory / f"{name}.npy"
+    meta_path = directory / f"{name}.json"
+    info: dict[str, Any] = {
+        "dir": str(directory),
+        "npy_present": matrix_path.is_file(),
+        "npy_bytes": matrix_path.stat().st_size if matrix_path.is_file() else None,
+        "json_present": meta_path.is_file(),
+        "expected_fingerprint": fingerprint,
+        "stored_fingerprint": None,
+        "stored_version": None,
+        "stored_model": None,
+        "stored_count": None,
+        "items_len": None,
+        "shape": None,
+    }
+    try:
+        envelope = json.loads(meta_path.read_text(encoding="utf-8"))
+        info["stored_fingerprint"] = envelope.get("fingerprint")
+        info["stored_version"] = envelope.get("version")
+        info["stored_model"] = envelope.get("model")
+        info["stored_count"] = envelope.get("count")
+        items = envelope.get("items")
+        info["items_len"] = len(items) if isinstance(items, list) else None
+    except Exception as exc:  # pragma: no cover - environment dependent
+        info["json_error"] = str(exc)
+
+    try:
+        if matrix_path.is_file():
+            matrix = np.load(matrix_path, allow_pickle=False, mmap_mode="r")
+            info["shape"] = list(matrix.shape)
+    except Exception as exc:  # pragma: no cover - environment dependent
+        info["npy_error"] = str(exc)
+
+    info["matches"] = (
+        info["stored_fingerprint"] == fingerprint
+        and info["stored_model"] == model
+        and info["stored_version"] == CACHE_VERSION
+        and info["shape"] is not None
+        and info["stored_count"] is not None
+        and info["shape"][0] == info["stored_count"]
+    )
+    return info
+
+
 def load(
     name: str,
     *,
