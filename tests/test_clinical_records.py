@@ -1,6 +1,6 @@
 """Phase 3 — clinical record CRUD across all seven record types."""
 
-from conftest import auth_header
+from conftest import auth_header, register_user, unique_email
 from fastapi.testclient import TestClient
 
 
@@ -550,3 +550,96 @@ def test_verification_stamps_and_clears_verified_at(
     )
     assert created_verified.status_code == 201, created_verified.text
     assert created_verified.json()["verified_at"] is not None
+
+
+def _share(client: TestClient, owner_token: str, pet_id: str, token: str, email: str, role: str) -> dict:
+    response = client.post(
+        f"/api/pets/{pet_id}/access",
+        json={"email": email, "role": role},
+        headers=auth_header(owner_token),
+    )
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
+def test_verification_is_narrower_than_write_access(
+    client: TestClient, owner_token: str, owner_pet: dict
+):
+    """A caregiver may add records but must not promote one to verified.
+
+    Verification is what puts an entry on the Digital Twin, so it is gated on
+    VERIFY_ROLES rather than WRITE_ROLES. An owner can confirm their own pet's
+    records; a caregiver sharing the pet cannot.
+    """
+    pet_id = owner_pet["id"]
+    caregiver_email = unique_email("caregiver-verify")
+    caregiver_token = register_user(client, caregiver_email)["access_token"]
+    _share(client, owner_token, pet_id, caregiver_token, caregiver_email, "caregiver")
+
+    draft = client.post(
+        f"/api/pets/{pet_id}/health-records",
+        json={
+            "title": "Caregiver note",
+            "record_type": "wellness_exam",
+            "occurred_at": "2024-06-01T09:00:00+00:00",
+        },
+        headers=auth_header(caregiver_token),
+    )
+    assert draft.status_code == 201, draft.text
+    assert draft.json()["verification_status"] == "unverified"
+
+    refused_patch = client.patch(
+        f"/api/pets/{pet_id}/health-records/{draft.json()['id']}",
+        json={"verification_status": "verified"},
+        headers=auth_header(caregiver_token),
+    )
+    assert refused_patch.status_code == 403, refused_patch.text
+
+    refused_create = client.post(
+        f"/api/pets/{pet_id}/health-records",
+        json={
+            "title": "Pre-verified by caregiver",
+            "record_type": "wellness_exam",
+            "occurred_at": "2024-06-02T09:00:00+00:00",
+            "verification_status": "verified",
+        },
+        headers=auth_header(caregiver_token),
+    )
+    assert refused_create.status_code == 403, refused_create.text
+
+    owner_verified = client.patch(
+        f"/api/pets/{pet_id}/health-records/{draft.json()['id']}",
+        json={"verification_status": "verified"},
+        headers=auth_header(owner_token),
+    )
+    assert owner_verified.status_code == 200, owner_verified.text
+    assert owner_verified.json()["verified_at"] is not None
+
+
+def test_veterinarian_can_verify_a_shared_pet(
+    client: TestClient, owner_token: str, owner_pet: dict, vet_email_vet
+):
+    """The role the README calls out for verification can still verify."""
+    pet_id = owner_pet["id"]
+    vet_email, vet_token = vet_email_vet
+    _share(client, owner_token, pet_id, vet_token, vet_email, "veterinarian")
+
+    draft = client.post(
+        f"/api/pets/{pet_id}/health-records",
+        json={
+            "title": "Referred case",
+            "record_type": "wellness_exam",
+            "occurred_at": "2024-06-03T09:00:00+00:00",
+        },
+        headers=auth_header(owner_token),
+    )
+    assert draft.status_code == 201, draft.text
+
+    verified = client.patch(
+        f"/api/pets/{pet_id}/health-records/{draft.json()['id']}",
+        json={"verification_status": "verified"},
+        headers=auth_header(vet_token),
+    )
+    assert verified.status_code == 200, verified.text
+    assert verified.json()["verified_at"] is not None
+    assert verified.json()["verified_by_user_id"] is not None
