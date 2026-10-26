@@ -52,15 +52,15 @@ def test_twin_profile_carries_identity(
     assert profile["notes"] == "Friendly but nervous around nail trims."
 
 
-def test_twin_states_it_is_software_based_and_not_ai(
+def test_twin_states_it_is_software_based_and_fact_only(
     client: TestClient, owner_token: str, populated_pet: dict
 ):
     body = twin(client, owner_token, populated_pet["id"])
     assert body["twin_type"] == "software_based_record_assembly"
     disclaimer = body["disclaimer"].lower()
     assert "not sensor-based" in disclaimer
-    assert "no ai analysis" in disclaimer
-    assert "not a diagnosis" in disclaimer
+    assert "verified facts" in disclaimer
+    assert "veterinarian" in disclaimer
 
 
 def _all_keys(node) -> set[str]:

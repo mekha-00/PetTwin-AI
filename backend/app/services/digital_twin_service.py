@@ -64,9 +64,8 @@ from app.services.timeline_service import build_health_timeline
 #: itself, not only in documentation.
 TWIN_DISCLAIMER = (
     "Software-based Digital Twin assembled from recorded veterinary records. "
-    "Not sensor-based, not real-time, and not connected to any device. "
-    "Contains no AI analysis, no risk score, and no treatment recommendation. "
-    "It is assistive information for a veterinarian, not a diagnosis."
+    "Not sensor-based and not real-time. It restates verified facts and derives "
+    "only counts and date arithmetic; interpreting them is the veterinarian's job."
 )
 
 #: A condition that has not been marked resolved is treated as ongoing.

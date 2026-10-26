@@ -85,9 +85,12 @@ of which are safe to state in a viva.
 
 ### What is deliberately not built at any point
 
-- No disease prediction model, no clinical decision support, no risk score.
-- No diagnosis, prescription, or treatment advice from the agent or RAG. The
-  model is never given a tool that could produce one.
+- No trained disease prediction model and no risk score: the ML path only
+  retrieves *similar recorded cases*, labelled with the diagnosis recorded for
+  that case.
+- No free-floating advice: a clinical-reference answer must be grounded in
+  retrieved passages with page citations, or it is refused instead of answered.
+  The agent has no tool that can write a record or produce a prescription.
 - No sensor, wearable, or real-time data. All inputs are records and documents.
 - No compliance certification of any kind.
 

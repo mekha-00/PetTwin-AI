@@ -41,8 +41,8 @@ def get_digital_twin(
     """Return the pet's current health state, assembled from its records.
 
     Recomputed on every call from the clinical records, so it always reflects
-    the latest saved data. The response contains no AI analysis, no risk score
-    and no treatment recommendation.
+    the latest saved data. It reports verified facts plus counts and date
+    arithmetic; it performs no inference of its own.
     """
     load_accessible_pet(db, pet_id=pet_id, user_id=current_user.id)
     snapshot = build_digital_twin(db, pet_id=pet_id, user_id=current_user.id)

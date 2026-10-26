@@ -123,6 +123,7 @@ class HealthRecordRead(BaseModel):
     clinic_name: str | None
     external_reference: str | None
     verified_at: datetime | None
+    verified_by_user_id: uuid.UUID | None
     source_type: SourceType
     verification_status: VerificationStatus
     notes: str | None
