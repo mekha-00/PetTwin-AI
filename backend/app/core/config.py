@@ -81,6 +81,24 @@ class Settings(BaseSettings):
             return [item.strip() for item in value.split(",") if item.strip()]
         return value
 
+    @field_validator(
+        "secret_key",
+        "groq_api_key",
+        "postgres_user",
+        "postgres_password",
+        "postgres_host",
+        "postgres_db",
+        "database_url_override",
+        mode="before",
+    )
+    @classmethod
+    def _strip_whitespace(cls, value: object) -> object:
+        # Dashboard env-var fields routinely pick up a trailing space when a
+        # value is pasted. For the Groq key that is fatal rather than cosmetic:
+        # httpx rejects a header with trailing whitespace and the SDK surfaces
+        # it as "APIConnectionError: Connection error."
+        return value.strip() if isinstance(value, str) else value
+
     @field_validator("jwt_algorithm")
     @classmethod
     def _only_hs256(cls, value: str) -> str:

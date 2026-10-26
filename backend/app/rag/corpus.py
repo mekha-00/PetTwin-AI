@@ -80,14 +80,25 @@ def _paragraph_windows(text: str, size: int, overlap: int) -> list[str]:
     return windows
 
 
-def load_chunks(documents_dir: Path | None = None) -> list[Chunk]:
-    """Read every PDF under ``documents_dir`` and return its chunks in order."""
+def document_paths(documents_dir: Path | None = None) -> list[Path]:
+    """Return the corpus PDFs in a platform-independent order.
+
+    ``sorted(paths)`` is not portable: ``PurePosixPath`` compares case
+    sensitively while ``PureWindowsPath`` case-folds, so the same directory
+    yields a different order on Windows and Linux. That changed both the chunk
+    numbering and the index fingerprint, which made the committed cache look
+    stale on the Linux deployment and triggered a full re-embed.
+    """
     directory = documents_dir or DOCUMENTS_DIR
     if not directory.exists():
         return []
+    return sorted(directory.glob("*.pdf"), key=lambda path: path.name)
 
+
+def load_chunks(documents_dir: Path | None = None) -> list[Chunk]:
+    """Read every PDF under ``documents_dir`` and return its chunks in order."""
     chunks: list[Chunk] = []
-    for pdf_path in sorted(directory.glob("*.pdf")):
+    for pdf_path in document_paths(documents_dir):
         try:
             document = pymupdf.open(pdf_path)
         except Exception:

@@ -50,3 +50,27 @@ def test_committed_indexes_exist_and_match_sources(monkeypatch) -> None:
     assert len(ml_items) > 0
     assert np.isfinite(rag_matrix).all()
     assert np.isfinite(ml_matrix).all()
+
+
+def test_fingerprint_is_independent_of_input_order(tmp_path) -> None:
+    """The digest must not depend on how the caller happens to enumerate files.
+
+    ``sorted(Path)`` differs between POSIX and Windows because the Windows
+    flavour case-folds, so a Windows-built cache used to look stale in the Linux
+    image and triggered a full re-embed (502/OOM on a 512 MB instance).
+    """
+    for name, size in (("b.pdf", 10), ("A.pdf", 20), ("c.PDF", 30), ("d.pdf", 40)):
+        (tmp_path / name).write_bytes(b"x" * size)
+
+    paths = list(tmp_path.glob("*.pdf"))
+    forward = index_cache.file_fingerprint(paths)
+    backward = index_cache.file_fingerprint(list(reversed(paths)))
+
+    assert forward == backward
+
+
+def test_chunk_order_follows_file_names() -> None:
+    from app.rag.corpus import document_paths
+
+    names = [path.name for path in document_paths()]
+    assert names == sorted(names)

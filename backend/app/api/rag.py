@@ -118,6 +118,13 @@ def rag_llm_check(current_user: CurrentUser) -> dict:
 
     from app.core.config import settings
 
+    def redact(text: str) -> str:
+        if settings.groq_api_key:
+            text = text.replace(settings.groq_api_key, "[redacted]")
+        import re
+
+        return re.sub(r"gsk_[A-Za-z0-9_-]+", "[redacted]", text)
+
     result: dict = {
         "key_present": bool(settings.groq_api_key),
         "key_length": len(settings.groq_api_key or ""),
@@ -132,7 +139,7 @@ def rag_llm_check(current_user: CurrentUser) -> dict:
         infos = socket.getaddrinfo("api.groq.com", 443, proto=socket.IPPROTO_TCP)
         result["dns"] = sorted({info[4][0] for info in infos})
     except Exception as exc:
-        result["dns_error"] = f"{type(exc).__name__}: {exc}"
+        result["dns_error"] = redact(f"{type(exc).__name__}: {exc}")
 
     try:
         import httpx
@@ -141,7 +148,7 @@ def rag_llm_check(current_user: CurrentUser) -> dict:
             response = client.get("https://api.groq.com/openai/v1/models")
         result["models_status"] = response.status_code
     except Exception as exc:
-        result["models_error"] = f"{type(exc).__name__}: {exc}"
+        result["models_error"] = redact(f"{type(exc).__name__}: {exc}")
 
     if settings.groq_api_key:
         try:
@@ -149,7 +156,7 @@ def rag_llm_check(current_user: CurrentUser) -> dict:
 
             result["groq_version"] = groq_sdk.__version__
         except Exception as exc:
-            result["groq_version_error"] = f"{type(exc).__name__}: {exc}"
+            result["groq_version_error"] = redact(f"{type(exc).__name__}: {exc}")
 
         try:
             import httpx
@@ -169,9 +176,9 @@ def rag_llm_check(current_user: CurrentUser) -> dict:
                     },
                 )
             result["raw_post_status"] = response.status_code
-            result["raw_post_body"] = response.text[:400]
+            result["raw_post_body"] = redact(response.text[:400])
         except Exception as exc:
-            result["raw_post_error"] = f"{type(exc).__name__}: {exc}"
+            result["raw_post_error"] = redact(f"{type(exc).__name__}: {exc}")
 
         try:
             from groq import Groq
@@ -187,9 +194,9 @@ def rag_llm_check(current_user: CurrentUser) -> dict:
             chain = []
             cause = exc
             while cause is not None and len(chain) < 5:
-                chain.append(f"{type(cause).__name__}: {cause!r}")
+                chain.append(redact(f"{type(cause).__name__}: {cause!r}"))
                 cause = cause.__cause__
-            result["completion_error"] = f"{type(exc).__name__}: {exc}"
+            result["completion_error"] = redact(f"{type(exc).__name__}: {exc}")
             result["completion_chain"] = chain
 
     return result

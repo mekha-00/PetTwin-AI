@@ -55,9 +55,14 @@ def file_fingerprint(paths: Iterable[Path]) -> str:
 
     Contents are not hashed: the inputs are immutable project assets, and a
     name+size change is a reliable enough signal while staying cheap at startup.
+
+    Sorting is by file name, never by ``Path``. ``PurePosixPath`` compares case
+    sensitively and ``PureWindowsPath`` case-folds, so ``sorted(paths)`` gives a
+    different digest on Linux than on Windows -- which made a cache built on
+    Windows look stale inside the Linux container.
     """
     digest = hashlib.sha256()
-    for path in sorted(Path(p) for p in paths):
+    for path in sorted((Path(p) for p in paths), key=lambda p: p.name):
         digest.update(f"{path.name}:{path.stat().st_size}\n".encode("utf-8"))
     return digest.hexdigest()
 

@@ -21,7 +21,7 @@ from app.core.index_cache import (
     load as load_cached,
     load_unverified,
 )
-from app.rag.corpus import DOCUMENTS_DIR, Chunk, load_chunks
+from app.rag.corpus import DOCUMENTS_DIR, Chunk, document_paths, load_chunks
 from app.rag.embeddings import MODEL_NAME, cosine_similarity, embed_query, embed_texts
 
 #: Name of this index inside the shared on-disk cache.
@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 
 
 def _corpus_fingerprint() -> str:
-    return file_fingerprint(Path(p) for p in DOCUMENTS_DIR.glob("*.pdf"))
+    return file_fingerprint(document_paths())
 
 
 def _chunks_to_payload(chunks: list[Chunk]) -> list[dict]:
@@ -135,7 +135,7 @@ def diagnostics() -> dict:
 
     from app.core.index_cache import cache_dir
 
-    paths = sorted(Path(p) for p in DOCUMENTS_DIR.glob("*.pdf"))
+    paths = document_paths()
     data = diagnostics_for(
         CACHE_NAME, model=MODEL_NAME, fingerprint=file_fingerprint(paths)
     )
