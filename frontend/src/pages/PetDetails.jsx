@@ -362,8 +362,8 @@ function RecordEntryForm({ petId, onChanged, canVerify }) {
       <ErrorMessage>{error}</ErrorMessage>
       <p className="text-sm text-ink-soft">
         A completed visit is created alongside the record so the new entry is properly
-        linked on the timeline. Records start <strong>unverified</strong> unless you
-        mark them verified below.
+        linked on the timeline. Records start <strong>unverified</strong>; owners and
+        veterinarians can mark them verified below.
       </p>
 
       <div className="grid gap-3 sm:grid-cols-2">
@@ -1080,9 +1080,9 @@ export default function PetDetails() {
         <span className="flex items-start gap-2">
           <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
           <span>
-            Records you add are marked <strong>unverified</strong> until a
-            veterinarian confirms them; use <strong>Verify</strong> on a record once
-            it is confirmed. Only verified records appear on the Digital Twin.
+            Records you add are marked <strong>unverified</strong> until someone
+            allowed to verify confirms them; use <strong>Verify</strong> on a record
+            once it is confirmed. Only verified records appear on the Digital Twin.
           </span>
         </span>
       </Notice>
