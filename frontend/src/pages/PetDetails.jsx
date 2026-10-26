@@ -32,6 +32,7 @@ import {
   listPetAccess,
   listVisits,
   revokePetAccess,
+  updateHealthRecord,
   updatePet,
 } from '../lib/endpoints'
 import { describeError } from '../lib/api'
@@ -270,7 +271,7 @@ function AllergySection({ petId, isReadOnly, onChanged }) {
 // ---------------------------------------------------------------------------
 // Health record + visit entry
 // ---------------------------------------------------------------------------
-function RecordEntryForm({ petId, onChanged }) {
+function RecordEntryForm({ petId, onChanged, canVerify }) {
   const [form, setForm] = useState({
     title: '',
     record_type: 'wellness_exam',
@@ -279,6 +280,7 @@ function RecordEntryForm({ petId, onChanged }) {
     diagnosis: '',
     medication: '',
     vaccine: '',
+    verified: false,
   })
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
@@ -292,12 +294,16 @@ function RecordEntryForm({ petId, onChanged }) {
     setBusy(true)
     setError(null)
 
+    // A veterinarian recording something they observed can mark it verified at
+    // the point of entry; it then reaches the Digital Twin immediately.
+    const verificationStatus = form.verified ? 'verified' : 'unverified'
+
     const visit = await createVisit(petId, {
       visit_at: new Date(form.occurred_at).toISOString(),
       visit_type: 'wellness',
       status: 'completed',
       reason_for_visit: form.title.trim(),
-      verification_status: 'unverified',
+      verification_status: verificationStatus,
     })
 
     try {
@@ -306,7 +312,7 @@ function RecordEntryForm({ petId, onChanged }) {
         record_type: form.record_type,
         occurred_at: new Date(form.occurred_at).toISOString(),
         visit_id: visit.id,
-        verification_status: 'unverified',
+        verification_status: verificationStatus,
       })
 
       // Child records are attached to the health record that created them, so
@@ -323,7 +329,7 @@ function RecordEntryForm({ petId, onChanged }) {
         const payload = {
           health_record_id: record.id,
           [field]: value.trim(),
-          verification_status: 'unverified',
+          verification_status: verificationStatus,
         }
         if (kind === 'symptoms') payload.onset_at = new Date(form.occurred_at).toISOString()
         if (kind === 'diagnoses') {
@@ -356,7 +362,8 @@ function RecordEntryForm({ petId, onChanged }) {
       <ErrorMessage>{error}</ErrorMessage>
       <p className="text-sm text-ink-soft">
         A completed visit is created alongside the record so the new entry is properly
-        linked on the timeline. Everything here starts as <strong>unverified</strong>.
+        linked on the timeline. Records start <strong>unverified</strong> unless you
+        mark them verified below.
       </p>
 
       <div className="grid gap-3 sm:grid-cols-2">
@@ -425,6 +432,24 @@ function RecordEntryForm({ petId, onChanged }) {
           <input id="hr_vaccine" className="field-input" value={form.vaccine} onChange={update('vaccine')} />
         </div>
       </fieldset>
+
+      {canVerify ? (
+      <label className="flex items-start gap-2 text-sm">
+        <input
+          type="checkbox"
+          className="mt-0.5"
+          checked={form.verified}
+          onChange={(event) =>
+            setForm((prev) => ({ ...prev, verified: event.target.checked }))
+          }
+        />
+        <span>
+          Mark this record as <strong>verified</strong>. Only do this when a
+          veterinarian has confirmed the details; an unverified record stays off
+          the Digital Twin.
+        </span>
+      </label>
+      ) : null}
 
       <div>
         <button
@@ -815,6 +840,8 @@ export default function PetDetails() {
   const { petId } = useParams()
   const navigate = useNavigate()
   const [editing, setEditing] = useState(false)
+  const [verifyingId, setVerifyingId] = useState(null)
+  const [verifyError, setVerifyError] = useState(null)
 
   const { data: pet, error, isLoading, reload } = useAsyncData(
     () => fetchPet(petId),
@@ -834,6 +861,28 @@ export default function PetDetails() {
     reloadRecords()
     reloadVisits()
   }, [reload, reloadRecords, reloadVisits])
+
+  // Verification is what moves a record onto the Digital Twin, so it is a
+  // first-class action here rather than something only the API can do.
+  const toggleVerification = useCallback(
+    async (record) => {
+      const next =
+        record.verification_status === 'verified' ? 'unverified' : 'verified'
+      setVerifyingId(record.id)
+      setVerifyError(null)
+      try {
+        await updateHealthRecord(petId, record.id, {
+          verification_status: next,
+        })
+        reloadRecords()
+      } catch (err) {
+        setVerifyError(describeError(err))
+      } finally {
+        setVerifyingId(null)
+      }
+    },
+    [petId, reloadRecords],
+  )
 
   if (isLoading) return <PageLoader label="Loading pet" />
   if (error || !pet) {
@@ -860,6 +909,10 @@ export default function PetDetails() {
     viewerRole === 'caregiver' ||
     viewerRole === 'veterinarian' ||
     viewerRole === 'clinic'
+  // Verification promotes an entry onto the Digital Twin, so it is narrower
+  // than write access: caregivers and clinics may add records but not confirm
+  // them. Mirrors the backend's VERIFY_ROLES.
+  const canVerify = isOwner || viewerRole === 'veterinarian'
 
   return (
     <div className="flex flex-col gap-6">
@@ -931,6 +984,7 @@ export default function PetDetails() {
         description={records ? `${records.total} record${records.total === 1 ? '' : 's'} in total` : undefined}
       >
         <ErrorMessage onRetry={reloadRecords}>{recordsError}</ErrorMessage>
+        <ErrorMessage>{verifyError}</ErrorMessage>
 
         {healthRecords.length === 0 ? (
           <EmptyState
@@ -951,20 +1005,34 @@ export default function PetDetails() {
                     {record.title}
                   </p>
                   <p className="text-sm text-ink-soft">
-                    {RECORD_TYPE_LABELS[record.record_type] ?? titleCase(record.record_type)} ·{' '}
+                    {RECORD_TYPE_LABELS[record.record_type] ?? titleCase(record.record_type)} ��{' '}
                     {formatDateTime(record.occurred_at)}
-                    {record.clinic_name ? ` · ${record.clinic_name}` : ''}
+                    {record.clinic_name ? ` �� ${record.clinic_name}` : ''}
                   </p>
                 </div>
-                <Badge tone={VERIFICATION_TONE[record.verification_status] ?? 'neutral'}>
-                  {record.verification_status}
-                </Badge>
+                <div className="flex items-center gap-2">
+                  <Badge tone={VERIFICATION_TONE[record.verification_status] ?? 'neutral'}>
+                    {record.verification_status}
+                  </Badge>
+                  {canVerify ? (
+                    <button
+                      type="button"
+                      className="btn btn-secondary px-2 py-1 text-xs"
+                      onClick={() => toggleVerification(record)}
+                      disabled={verifyingId === record.id}
+                    >
+                      {record.verification_status === 'verified' ? 'Unverify' : 'Verify'}
+                    </button>
+                  ) : null}
+                </div>
               </li>
             ))}
           </ul>
         )}
 
-        {canWrite ? <RecordEntryForm petId={pet.id} onChanged={refreshAll} /> : null}
+        {canWrite ? (
+          <RecordEntryForm petId={pet.id} onChanged={refreshAll} canVerify={canVerify} />
+        ) : null}
       </SectionCard>
 
       {isOwner ? <ShareSection petId={pet.id} /> : null}
@@ -1013,8 +1081,8 @@ export default function PetDetails() {
           <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
           <span>
             Records you add are marked <strong>unverified</strong> until a
-            veterinarian confirms them. The Digital Twin separates verified history
-            from unverified entries and offers no diagnosis or treatment advice.
+            veterinarian confirms them; use <strong>Verify</strong> on a record once
+            it is confirmed. Only verified records appear on the Digital Twin.
           </span>
         </span>
       </Notice>

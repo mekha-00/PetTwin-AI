@@ -494,3 +494,59 @@ def test_record_from_another_pet_is_404_by_id(
         headers=auth_header(owner_token),
     )
     assert response.status_code == 404
+
+
+def test_verification_stamps_and_clears_verified_at(
+    client: TestClient, owner_token: str, owner_pet: dict
+):
+    """Confirming a record records who/when, and un-verifying clears it.
+
+    The Digital Twin only reads verified records, so verification is the switch
+    that moves a record onto the twin. The stamp is the evidence behind that
+    switch and must not survive a revert.
+    """
+    pet_id = owner_pet["id"]
+    created = client.post(
+        f"/api/pets/{pet_id}/health-records",
+        json={
+            "title": "Owner-reported limp",
+            "record_type": "wellness_exam",
+            "occurred_at": "2024-05-01T09:00:00+00:00",
+        },
+        headers=auth_header(owner_token),
+    )
+    assert created.status_code == 201, created.text
+    record = created.json()
+    assert record["verification_status"] == "unverified"
+    assert record["verified_at"] is None
+
+    verified = client.patch(
+        f"/api/pets/{pet_id}/health-records/{record['id']}",
+        json={"verification_status": "verified"},
+        headers=auth_header(owner_token),
+    )
+    assert verified.status_code == 200, verified.text
+    assert verified.json()["verification_status"] == "verified"
+    assert verified.json()["verified_at"] is not None
+
+    cleared = client.patch(
+        f"/api/pets/{pet_id}/health-records/{record['id']}",
+        json={"verification_status": "unverified"},
+        headers=auth_header(owner_token),
+    )
+    assert cleared.status_code == 200, cleared.text
+    assert cleared.json()["verification_status"] == "unverified"
+    assert cleared.json()["verified_at"] is None
+
+    created_verified = client.post(
+        f"/api/pets/{pet_id}/health-records",
+        json={
+            "title": "Vet-confirmed examination",
+            "record_type": "wellness_exam",
+            "occurred_at": "2024-05-02T09:00:00+00:00",
+            "verification_status": "verified",
+        },
+        headers=auth_header(owner_token),
+    )
+    assert created_verified.status_code == 201, created_verified.text
+    assert created_verified.json()["verified_at"] is not None

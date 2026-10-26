@@ -15,6 +15,7 @@ compares its ``pet_id`` to the path value before inserting.
 """
 
 import uuid
+from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import HTTPException, status
@@ -29,7 +30,11 @@ from app.models.medication import MedicationRecord
 from app.models.symptom import SymptomRecord
 from app.models.vaccination import VaccinationRecord
 from app.models.visit import VeterinaryVisit
-from app.services.authorization import require_pet_write_access
+from app.services.authorization import (
+    VERIFY_ROLES,
+    require_pet_role,
+    require_pet_write_access,
+)
 
 #: Child record types that hang off a health record rather than a visit.
 CHILD_MODELS = (
@@ -156,11 +161,55 @@ def _order_column(model):
     }[model]
 
 
+def _require_verify_permission_if_needed(
+    db: Session, *, pet_id: uuid.UUID, user_id: uuid.UUID, data: dict
+) -> None:
+    """Gate a write that would mark a record verified.
+
+    Ordinary write access is enough to record what happened; promoting that to
+    "established history" is not. The check only runs when the payload actually
+    sets the status, so a caregiver editing a title is unaffected.
+    """
+    status = data.get("verification_status")
+    if status == VerificationStatus.VERIFIED:
+        require_pet_role(
+            db, pet_id=pet_id, user_id=user_id, allowed=VERIFY_ROLES
+        )
+
+
+def _stamp_verification(record: Any, *, user_id: uuid.UUID) -> None:
+    """Keep ``verified_at`` / ``verified_by_user_id`` in step with the status.
+
+    Only ``HealthRecord`` carries the stamp columns; the other record types
+    share ``verification_status`` through ``ProvenanceMixin`` but store no
+    verifier. Marking a record verified records who did it and when, and
+    reverting to unverified clears that evidence so it cannot be misread as a
+    confirmation that never happened.
+    """
+    status = getattr(record, "verification_status", None)
+    if status is None:
+        return
+    if status == VerificationStatus.VERIFIED:
+        if hasattr(record, "verified_at") and record.verified_at is None:
+            record.verified_at = datetime.now(timezone.utc)
+        if hasattr(record, "verified_by_user_id"):
+            record.verified_by_user_id = user_id
+    else:
+        if hasattr(record, "verified_at"):
+            record.verified_at = None
+        if hasattr(record, "verified_by_user_id"):
+            record.verified_by_user_id = None
+
+
 def create_visit(
     db: Session, *, pet_id: uuid.UUID, user_id: uuid.UUID, data: dict
 ) -> VeterinaryVisit:
     require_pet_write_access(db, pet_id=pet_id, user_id=user_id)
+    _require_verify_permission_if_needed(
+        db, pet_id=pet_id, user_id=user_id, data=data
+    )
     visit = VeterinaryVisit(pet_id=pet_id, **data)
+    _stamp_verification(visit, user_id=user_id)
     db.add(visit)
     db.commit()
     db.refresh(visit)
@@ -171,9 +220,13 @@ def create_health_record(
     db: Session, *, pet_id: uuid.UUID, user_id: uuid.UUID, data: dict
 ) -> HealthRecord:
     require_pet_write_access(db, pet_id=pet_id, user_id=user_id)
+    _require_verify_permission_if_needed(
+        db, pet_id=pet_id, user_id=user_id, data=data
+    )
     visit_id = data.get("visit_id")
     _assert_visit_belongs_to_pet(db, visit_id=visit_id, pet_id=pet_id)
     record = HealthRecord(pet_id=pet_id, **data)
+    _stamp_verification(record, user_id=user_id)
     db.add(record)
     db.commit()
     db.refresh(record)
@@ -228,6 +281,9 @@ def update_record(
     data: dict,
 ) -> Any:
     require_pet_write_access(db, pet_id=pet_id, user_id=user_id)
+    _require_verify_permission_if_needed(
+        db, pet_id=pet_id, user_id=user_id, data=data
+    )
     record = get_record_or_404(db, model=model, record_id=record_id, pet_id=pet_id)
 
     for field, value in data.items():
@@ -236,6 +292,8 @@ def update_record(
         if field in (CHILD_PARENT_FIELD, "pet_id", "id"):
             continue
         setattr(record, field, value)
+
+    _stamp_verification(record, user_id=user_id)
 
     # A diagnosis marked resolved without a status change would still read as
     # an active condition in the Digital Twin, so keep the two consistent.

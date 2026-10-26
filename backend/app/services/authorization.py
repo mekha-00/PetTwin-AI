@@ -48,6 +48,15 @@ WRITE_ROLES = frozenset(
     }
 )
 
+#: Roles permitted to mark a record verified.
+#:
+#: Verification is what promotes an entry onto the Digital Twin, so it is not
+#: part of ordinary write access: a caregiver or clinic account may add records
+#: but must not turn an unverified draft into established history. The owner can
+#: confirm records for their own animal, and a veterinarian can confirm on the
+#: owner's behalf.
+VERIFY_ROLES = frozenset({PetAccessRole.OWNER, PetAccessRole.VETERINARIAN})
+
 
 def grant_pet_access(
     db: Session,

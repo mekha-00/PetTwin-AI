@@ -9,7 +9,6 @@ import {
   Badge,
   EmptyState,
   ErrorMessage,
-  Notice,
   PageLoader,
   SectionCard,
 } from '../components/ui'
@@ -134,11 +133,7 @@ export default function Dashboard() {
         )}
       </SectionCard>
 
-      <Notice tone="info">
-        The Digital Twin shown on each pet page is assembled from recorded veterinary
-        information. It is software-based, not sensor-based, and contains no AI
-        analysis or treatment recommendation.
-      </Notice>
+
     </div>
   )
 }

@@ -129,6 +129,12 @@ export async function createHealthRecord(petId, payload) {
   return data
 }
 
+/** Update a health record, including its `verification_status`. */
+export async function updateHealthRecord(petId, recordId, payload) {
+  const { data } = await api.patch(`/pets/${petId}/health-records/${recordId}`, payload)
+  return data
+}
+
 export async function createVisit(petId, payload) {
   const { data } = await api.post(`/pets/${petId}/visits`, payload)
   return data

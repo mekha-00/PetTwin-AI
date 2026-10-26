@@ -22,10 +22,6 @@ export default function AuthShell({ title, subtitle, children, footer }) {
 
         {footer ? <div className="mt-4 text-center text-sm text-ink-soft">{footer}</div> : null}
 
-        <p className="mt-8 text-center text-xs leading-relaxed text-ink-soft">
-          PetTwin AI is assistive software. It does not diagnose or prescribe, and no
-          AI analysis is available in this phase.
-        </p>
       </div>
     </div>
   )

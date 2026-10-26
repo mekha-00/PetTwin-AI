@@ -1,9 +1,9 @@
 /**
  * Small presentational pieces shared across pages.
  *
- * Phase 3 deliberately has no AI output components. `StatusNote` exists to be
- * explicit about what is *not* implemented, so a placeholder is never
- * mistaken for a working feature.
+ * AI output is rendered by the feature components themselves (Digital Twin,
+ * agent answers, clinical reference), so nothing here implies that analysis is
+ * unavailable.
  */
 import { AlertCircle, Info, Loader2 } from 'lucide-react'
 

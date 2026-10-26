@@ -305,7 +305,7 @@ Two role namespaces exist and are deliberately separate:
 |---|---|---|---|---|
 | Read the pet and its records | yes | yes | yes | yes |
 | Add / edit clinical records | yes | yes | yes | yes |
-| Verify a record | no | no | **yes** | no |
+| Verify a record | **yes** | no | **yes** | no |
 | Soft-delete the pet (`DELETE /api/pets/{id}`) | **yes** | 403 | 403 | 403 |
 | Purge the pet (`POST /api/pets/{id}/purge`) | **yes** | 403 | 403 | 403 |
 | Edit the pet's identity profile | **yes** | yes | no | no |
@@ -314,7 +314,10 @@ Soft deletion revokes the access grant of every **collaborator** but deliberatel
 **keeps the owner's grant**, so the owner can still read the record of what was
 known about the animal. Purge is owner-only because erasure permanently destroys
 medical history. A veterinarian can read and add to the record and can *verify*
-entries, but cannot purge the pet or rewrite its identity.
+entries, but cannot purge the pet or rewrite its identity. The owner may also
+verify records for their own pet: verification is what promotes an entry onto
+the Digital Twin, so it is separate from ordinary write access (caregivers and
+clinics can add records but cannot confirm them).
 
 #### Sharing a pet
 
