@@ -145,6 +145,35 @@ def rag_llm_check(current_user: CurrentUser) -> dict:
 
     if settings.groq_api_key:
         try:
+            import groq as groq_sdk
+
+            result["groq_version"] = groq_sdk.__version__
+        except Exception as exc:
+            result["groq_version_error"] = f"{type(exc).__name__}: {exc}"
+
+        try:
+            import httpx
+
+            result["httpx_version"] = httpx.__version__
+            with httpx.Client(timeout=25.0) as client:
+                response = client.post(
+                    "https://api.groq.com/openai/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {settings.groq_api_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "model": settings.groq_model,
+                        "messages": [{"role": "user", "content": "Reply with: ok"}],
+                        "max_tokens": 8,
+                    },
+                )
+            result["raw_post_status"] = response.status_code
+            result["raw_post_body"] = response.text[:400]
+        except Exception as exc:
+            result["raw_post_error"] = f"{type(exc).__name__}: {exc}"
+
+        try:
             from groq import Groq
 
             client = Groq(api_key=settings.groq_api_key, timeout=25.0)
@@ -155,6 +184,12 @@ def rag_llm_check(current_user: CurrentUser) -> dict:
             )
             result["completion"] = completion.choices[0].message.content
         except Exception as exc:
+            chain = []
+            cause = exc
+            while cause is not None and len(chain) < 5:
+                chain.append(f"{type(cause).__name__}: {cause!r}")
+                cause = cause.__cause__
             result["completion_error"] = f"{type(exc).__name__}: {exc}"
+            result["completion_chain"] = chain
 
     return result
