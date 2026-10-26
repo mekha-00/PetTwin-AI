@@ -94,7 +94,9 @@ def _generate(prompt: str) -> str:
     except LlmUnavailableError:
         raise
     except Exception as exc:
-        raise LlmUnavailableError(f"LLM call failed: {exc}") from exc
+        raise LlmUnavailableError(
+            f"LLM call failed: {type(exc).__name__}: {exc}"
+        ) from exc
 
 
 def answer_question(

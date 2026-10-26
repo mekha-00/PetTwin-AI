@@ -104,3 +104,57 @@ def rag_query(payload: RagQuery, current_user: CurrentUser) -> RagAnswer:
         grounded=result.grounded,
         model=result.model,
     )
+
+
+@router.get("/llm-check", summary="Diagnose outbound LLM connectivity")
+def rag_llm_check(current_user: CurrentUser) -> dict:
+    """Probe DNS, TLS and the Groq API from inside the running instance.
+
+    Only exercised during deployment troubleshooting; it reports exception
+    types and environment proxy settings, never the API key itself.
+    """
+    import os
+    import socket
+
+    from app.core.config import settings
+
+    result: dict = {
+        "key_present": bool(settings.groq_api_key),
+        "key_length": len(settings.groq_api_key or ""),
+        "model": settings.groq_model,
+        "proxy_env": {
+            name: os.environ.get(name)
+            for name in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY")
+        },
+    }
+
+    try:
+        infos = socket.getaddrinfo("api.groq.com", 443, proto=socket.IPPROTO_TCP)
+        result["dns"] = sorted({info[4][0] for info in infos})
+    except Exception as exc:
+        result["dns_error"] = f"{type(exc).__name__}: {exc}"
+
+    try:
+        import httpx
+
+        with httpx.Client(timeout=20.0) as client:
+            response = client.get("https://api.groq.com/openai/v1/models")
+        result["models_status"] = response.status_code
+    except Exception as exc:
+        result["models_error"] = f"{type(exc).__name__}: {exc}"
+
+    if settings.groq_api_key:
+        try:
+            from groq import Groq
+
+            client = Groq(api_key=settings.groq_api_key, timeout=25.0)
+            completion = client.chat.completions.create(
+                model=settings.groq_model,
+                messages=[{"role": "user", "content": "Reply with: ok"}],
+                max_tokens=8,
+            )
+            result["completion"] = completion.choices[0].message.content
+        except Exception as exc:
+            result["completion_error"] = f"{type(exc).__name__}: {exc}"
+
+    return result
