@@ -138,6 +138,42 @@ def diagnostics(name: str, *, model: str, fingerprint: str) -> dict[str, Any]:
     return info
 
 
+def load_unverified(
+    name: str,
+    *,
+    model: str,
+) -> tuple[np.ndarray, list[dict[str, Any]]] | None:
+    """Load a structurally valid entry even if its fingerprint drifted.
+
+    On a 512 MB instance, falling back to embedding the whole corpus is not a
+    slow path, it is a crash: the process is killed mid-request and the gateway
+    returns 502. A committed cache whose source files changed only in size or
+    line endings is still self-consistent (the matrix rows line up with the
+    stored passages), so it is far better to serve it than to rebuild.
+    """
+    directory = cache_dir()
+    matrix_path = directory / f"{name}.npy"
+    meta_path = directory / f"{name}.json"
+    if not matrix_path.is_file() or not meta_path.is_file():
+        return None
+    try:
+        envelope = json.loads(meta_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if envelope.get("version") != CACHE_VERSION or envelope.get("model") != model:
+        return None
+    items = envelope.get("items")
+    if not isinstance(items, list) or envelope.get("count") != len(items):
+        return None
+    try:
+        matrix = np.load(matrix_path, allow_pickle=False)
+    except (OSError, ValueError):
+        return None
+    if matrix.ndim != 2 or matrix.shape[0] != len(items):
+        return None
+    return matrix, items
+
+
 def load(
     name: str,
     *,

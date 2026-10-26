@@ -8,6 +8,7 @@ reuses the same matrix.
 
 from __future__ import annotations
 
+import logging
 import threading
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -18,12 +19,15 @@ from app.core.index_cache import (
     diagnostics as diagnostics_for,
     file_fingerprint,
     load as load_cached,
+    load_unverified,
 )
 from app.rag.corpus import DOCUMENTS_DIR, Chunk, load_chunks
 from app.rag.embeddings import MODEL_NAME, cosine_similarity, embed_query, embed_texts
 
 #: Name of this index inside the shared on-disk cache.
 CACHE_NAME = "rag"
+
+logger = logging.getLogger(__name__)
 
 
 def _corpus_fingerprint() -> str:
@@ -78,9 +82,19 @@ def build_index() -> _Index:
                     matrix, items = cached
                     _index = _Index(_chunks_from_payload(items), matrix)
                 else:
-                    chunks = load_chunks()
-                    matrix = embed_texts([c.text for c in chunks])
-                    _index = _Index(chunks, matrix)
+                    stale = load_unverified(CACHE_NAME, model=MODEL_NAME)
+                    if stale is not None:
+                        logger.warning(
+                            "RAG index cache fingerprint drifted; using the "
+                            "committed matrix instead of re-embedding %d chunks",
+                            len(stale[1]),
+                        )
+                        matrix, items = stale
+                        _index = _Index(_chunks_from_payload(items), matrix)
+                    else:
+                        chunks = load_chunks()
+                        matrix = embed_texts([c.text for c in chunks])
+                        _index = _Index(chunks, matrix)
     return _index
 
 
@@ -116,9 +130,36 @@ def is_loaded() -> bool:
 
 def diagnostics() -> dict:
     """Explain cache state for the deployed instance (see ``index_cache``)."""
-    return diagnostics_for(
-        CACHE_NAME, model=MODEL_NAME, fingerprint=_corpus_fingerprint()
+    import hashlib
+    import json
+
+    from app.core.index_cache import cache_dir
+
+    paths = sorted(Path(p) for p in DOCUMENTS_DIR.glob("*.pdf"))
+    data = diagnostics_for(
+        CACHE_NAME, model=MODEL_NAME, fingerprint=file_fingerprint(paths)
     )
+    data["sources"] = [{"name": p.name, "size": p.stat().st_size} for p in paths]
+
+    try:
+        chunks = load_chunks()
+        data["parsed_chunks"] = len(chunks)
+        data["parsed_hash"] = hashlib.sha256(
+            "".join(c.text for c in chunks).encode("utf-8")
+        ).hexdigest()[:16]
+    except Exception as exc:  # pragma: no cover - environment dependent
+        data["parse_error"] = str(exc)
+
+    try:
+        envelope = json.loads((cache_dir() / f"{CACHE_NAME}.json").read_text("utf-8"))
+        items = envelope.get("items") or []
+        data["cache_hash"] = hashlib.sha256(
+            "".join(str(item.get("text", "")) for item in items).encode("utf-8")
+        ).hexdigest()[:16]
+    except Exception as exc:  # pragma: no cover - environment dependent
+        data["cache_read_error"] = str(exc)
+
+    return data
 
 
 def search(query: str, *, top_k: int = 4, min_score: float = 0.0) -> list[RetrievedChunk]:

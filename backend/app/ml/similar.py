@@ -13,19 +13,26 @@ is a second or two after the model is loaded.
 
 from __future__ import annotations
 
+import logging
 import threading
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
 import numpy as np
 
-from app.core.index_cache import file_fingerprint, load as load_cached
+from app.core.index_cache import (
+    file_fingerprint,
+    load as load_cached,
+    load_unverified,
+)
 from app.ml.dataset import DEFAULT_CSV, CaseRecord, load_cases
 from app.ml.features import features_for_case
 from app.rag.embeddings import MODEL_NAME, cosine_similarity, embed_query, embed_texts
 
 #: Name of this index inside the shared on-disk cache.
 CACHE_NAME = "ml"
+
+logger = logging.getLogger(__name__)
 
 
 def _corpus_fingerprint() -> str:
@@ -87,12 +94,22 @@ def build_index() -> _CaseIndex:
                     matrix, items = cached
                     _index = _CaseIndex(_cases_from_payload(items), matrix)
                 else:
-                    cases = load_cases()
-                    if cases:
-                        matrix = embed_texts([features_for_case(c) for c in cases])
+                    stale = load_unverified(CACHE_NAME, model=MODEL_NAME)
+                    if stale is not None:
+                        logger.warning(
+                            "Case index cache fingerprint drifted; using the "
+                            "committed matrix instead of re-embedding %d cases",
+                            len(stale[1]),
+                        )
+                        matrix, items = stale
+                        _index = _CaseIndex(_cases_from_payload(items), matrix)
                     else:
-                        matrix = np.zeros((0, 384), dtype=np.float32)
-                    _index = _CaseIndex(cases, matrix)
+                        cases = load_cases()
+                        if cases:
+                            matrix = embed_texts([features_for_case(c) for c in cases])
+                        else:
+                            matrix = np.zeros((0, 384), dtype=np.float32)
+                        _index = _CaseIndex(cases, matrix)
     return _index
 
 
